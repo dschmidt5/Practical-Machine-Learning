@@ -1,0 +1,126 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Dana Schmidt"
+date: "July 19, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## Objective
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. We will use the other variables to create predictions. This report will describe how I built my model, how I used cross validation, what I think the expected outcome of the sample error is and why I made the choices I did. In the end I will use my prediction model to predict 20 different test cases.
+
+## Prepare the data
+
+```{r, message=FALSE}
+library(caret)
+library(randomForest)
+
+
+if (!file.exists("pml-training.csv")) {
+  download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+}
+if (!file.exists("pml-testing.csv")) {
+  download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+}
+test <- read.csv("pml-testing.csv", sep = ",", na.strings = c("", "NA"))
+train <- read.csv("pml-training.csv", sep = ",", na.strings = c("", "NA"))
+
+```
+
+Next, we will clean the data by removing columns that are mostly NA's or columns with nearly zero variance. Then we will remove the first five columns because they are not useful for our prediction. We will also perform all steps on the test dataset in order to keep the two files the same.
+
+```{r}
+
+# First remove columns that are mostly NA
+removeNA <- sapply(train, function(x) mean(is.na(x))) > 0.95
+train <- train[, removeNA==F]
+test <- test[, removeNA==F]
+
+# Next remove nearly zero variance
+nzv <- nearZeroVar(train)
+train <- train[, -nzv]
+test <- test[, -nzv]
+
+# Finally remove unnecessary columns
+train <- train[, -(1:5)]
+test <- test[, -(1:5)]
+
+```
+
+Final part of preparing the data is to split the training dataset into a smaller training set and a test set. We were provided with a very large training set so by splitting it into a training set and a test set we now have a smaller training set that will be less time consuming and a test set we can use to validate. 
+
+```{r}
+set.seed(10)
+inTrain <- createDataPartition(y=train$classe, p=0.7, list=F)
+subTrain <- train[inTrain, ]
+subTest <- train[-inTrain, ]
+
+```
+
+## Predicting with Random Forests
+
+I chose to start with the Random Forest model due to its high accuracy. I used the trainControl function to set the cross-validation to 4-fold cross-validation. Then I fit the model to our subTrain dataset.
+
+```{r}
+
+ctrl <- trainControl(method="cv", number=4, verboseIter=F)
+fit <- train(classe ~ ., data=subTrain, method="rf", trControl=ctrl)
+fit$finalModel
+
+```
+
+We see that the model used 500 trees and tried 27 variables at each split.
+
+Now we will use the fitted model on our subTest set to validate.
+
+```{r}
+
+predict <- predict(fit, newdata=subTest)
+
+confusionMatrix(subTest$classe, predict)
+
+```
+
+The high accuracy of the Random Forest model proves true with a 99.8% accuracy on our test set. This means the out of sample error is 0.2%.
+
+## Re-fit Model
+
+In order to use our model to make predictions on the test dataset we need to first re-fit the model to the full train dataset.
+
+```{r}
+
+ctrl <- trainControl(method="cv", number=4, verboseIter=F)
+fit <- train(classe ~ ., data=train, method="rf", trControl=ctrl)
+
+```
+
+## Predicting on Test Dataset
+
+Finally we run our model on the test dataset to make our predictions.
+
+```{r}
+
+predict <- predict(fit, newdata=test)
+
+
+```
